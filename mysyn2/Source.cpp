@@ -28,19 +28,68 @@ struct Token {
 
 map<Token, string> tltb; // token -> terminal
 
-struct TokenStr {
-	vector<Token> toks;
+struct TOrNTStr { // terminal or non-terminal string
+	vector<string> toks;
 	int size() {
 		return (int)toks.size();
 	}
-	Token &operator[](int i) {
+	string &operator[](int i) {
 		if (i < 0 || i >= size())
 			throw "TokenStr out of bounds!";
 		return toks[i]; 
 	}
+	void push_back(const string t) {
+		toks.push_back(t);
+	}
 };
 
-map<string, vector<TokenStr>> rules; // non-terminal -> (non-)terminal strings | ...
+struct Rules {
+	map<string, vector<TOrNTStr>> rs; // non-terminal -> terminal or non-terminal string | ...
+	enum class State { WAIT_FOR_NONT, WAIT_FOR_TS };
+	Rules(string f) {
+		ifstream fin(f);
+		State state = State::WAIT_FOR_NONT;
+
+		string nonTerminal;
+		TOrNTStr ts;
+		vector<TOrNTStr> expand;
+		string s;
+		while (fin >> s) {
+			switch (state)
+			{
+			case State::WAIT_FOR_NONT: {
+				nonTerminal = s;
+				state = State::WAIT_FOR_TS;
+			}
+								break;
+			case State::WAIT_FOR_TS: {
+				if (s == "#") {
+					expand.push_back(ts);
+					rs[nonTerminal] = expand;
+					nonTerminal = "";
+					expand = vector<TOrNTStr>();
+					state = State::WAIT_FOR_NONT;
+				}
+				else if (s == "::=") {
+					ts = TOrNTStr();
+				}
+				else if (s == "|") {
+					expand.push_back(ts);
+					ts = TOrNTStr();
+				}
+				else {
+					ts.push_back(s);
+				}
+			}
+							  break;
+			default:
+				throw "Unrecognized State!";
+			}
+		}
+
+		fin.close();
+	}
+};
 
 void readTltb(string f) {
 	ifstream fin(f);
@@ -74,7 +123,8 @@ void readTltb(string f) {
 	fin.close();
 }
 
+
 int main() {
 	readTltb("tltb.txt");
-	
+	Rules r("rule.txt");
 }
