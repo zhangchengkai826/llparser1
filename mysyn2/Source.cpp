@@ -6,6 +6,7 @@
 #include <utility>
 #include <exception>
 #include <cstring>
+#include <set>
 using namespace std;
 
 struct Token {
@@ -30,21 +31,70 @@ map<Token, string> tltb; // token -> terminal
 
 struct TOrNTStr { // terminal or non-terminal string
 	vector<string> toks;
-	int size() {
+	int size() const {
 		return (int)toks.size();
+	}
+	bool isEmpty() const {
+		if (size() < 0)
+			throw "TokenStr out of bounds!";
+		else if (size() == 0)
+			return true;
+		else
+			return false;
 	}
 	string &operator[](int i) {
 		if (i < 0 || i >= size())
 			throw "TokenStr out of bounds!";
-		return toks[i]; 
+		return toks[i];
+	}
+	const string &operator[](int i) const {
+		if (i < 0 || i >= size())
+			throw "TokenStr out of bounds!";
+		return toks[i];
 	}
 	void push_back(const string t) {
 		toks.push_back(t);
 	}
+	void eraseAt(int i) {
+		toks.erase(toks.begin() + i);
+	}
+	void insertTOrNTStrAt(int i, const TOrNTStr t) {
+		toks.insert(toks.begin() + i, t.toks.begin(), t.toks.end());
+	}
+	bool operator<(const TOrNTStr ts) const {
+		if (size() < ts.size())
+			return true;
+		else if (size() > ts.size())
+			return false;
+		else {
+			for (int i = 0; i < size(); i++) {
+				if (toks[i] < ts.toks[i])
+					return true;
+				else if (toks[i] > ts.toks[i])
+					return false;
+			}
+			return false; // equal
+		}
+	}
+	bool operator>(const TOrNTStr ts) const {
+		if (size() > ts.size())
+			return true;
+		else if (size() < ts.size())
+			return false;
+		else {
+			for (int i = 0; i < size(); i++) {
+				if (toks[i] > ts.toks[i])
+					return true;
+				else if (toks[i] < ts.toks[i])
+					return false;
+			}
+			return false; // equal
+		}
+	}
 };
 
 struct Rules {
-	map<string, vector<TOrNTStr>> rs; // non-terminal -> terminal or non-terminal string | ...
+	map<string, set<TOrNTStr>> rs; // non-terminal -> terminal or non-terminal string | ...
 	enum class State { WAIT_FOR_NONT, WAIT_FOR_TS };
 	Rules(string f) {
 		ifstream fin(f);
@@ -52,7 +102,7 @@ struct Rules {
 
 		string nonTerminal;
 		TOrNTStr ts;
-		vector<TOrNTStr> expand;
+		set<TOrNTStr> expand;
 		string s;
 		while (fin >> s) {
 			switch (state)
@@ -61,33 +111,97 @@ struct Rules {
 				nonTerminal = s;
 				state = State::WAIT_FOR_TS;
 			}
-								break;
+				break;
 			case State::WAIT_FOR_TS: {
 				if (s == "#") {
-					expand.push_back(ts);
+					expand.insert(ts);
 					rs[nonTerminal] = expand;
 					nonTerminal = "";
-					expand = vector<TOrNTStr>();
+					expand = set<TOrNTStr>();
 					state = State::WAIT_FOR_NONT;
 				}
 				else if (s == "::=") {
 					ts = TOrNTStr();
 				}
 				else if (s == "|") {
-					expand.push_back(ts);
+					expand.insert(ts);
 					ts = TOrNTStr();
 				}
 				else {
 					ts.push_back(s);
 				}
 			}
-							  break;
+				break;
 			default:
 				throw "Unrecognized State!";
 			}
 		}
 
 		fin.close();
+	}
+	void removeLeftRecoursion() {
+		map<string, set<TOrNTStr>> checked;
+		for (pair<string, set<TOrNTStr>> rule : rs) {
+			string nonTerminal = rule.first;
+			string altNonTerminal; // added for removing left recursion
+			set<TOrNTStr> curExpansions = rule.second;
+			for (pair<string, set<TOrNTStr>> cRule : checked) {
+				set<TOrNTStr> nCurExpansions;
+				for (TOrNTStr ts : curExpansions) {
+					if (ts.isEmpty()) continue;
+					if (ts[0] == cRule.first) {
+						ts.eraseAt(0);
+						for (TOrNTStr possibleCExpand : cRule.second) {
+							TOrNTStr nts = ts;
+							nts.insertTOrNTStrAt(0, possibleCExpand);
+							nCurExpansions.insert(nts);
+						}
+					}
+					nCurExpansions.insert(ts);
+				}
+				curExpansions = nCurExpansions;
+			}
+			// curExpansions now fully expands, start removing immediate left recursion...
+			// check for immediate left recursion...
+			bool bHasImmLeftRecursion = false;
+			for (const TOrNTStr &ts : curExpansions) {
+				if (ts.isEmpty()) continue;
+				if (ts[0] == nonTerminal) {
+					bHasImmLeftRecursion = true;
+					break;
+				}
+			}
+			if (bHasImmLeftRecursion) {
+				// remove immediate left recursion...
+				string origNonterminal = nonTerminal;
+				string altNonTerminal = nonTerminal + "Alt";
+				set<TOrNTStr> orig;
+				set<TOrNTStr> alt;
+
+				for (TOrNTStr ts : curExpansions) {
+					if (ts.isEmpty()) continue;
+					if (ts[0] == nonTerminal) {
+						TOrNTStr nts = ts;
+						nts.eraseAt(0);
+						nts.push_back(altNonTerminal);
+						alt.insert(nts);
+					}
+					else {
+						TOrNTStr nts = ts;
+						nts.push_back(altNonTerminal);
+						orig.insert(nts);
+					}
+				}
+				alt.insert(TOrNTStr()); // append an empty expansion
+
+				checked[origNonterminal] = orig;
+				checked[altNonTerminal] = alt;
+			}
+			else {
+				checked[nonTerminal] = curExpansions;
+			}
+		}
+		rs = checked;
 	}
 };
 
@@ -127,4 +241,5 @@ void readTltb(string f) {
 int main() {
 	readTltb("tltb.txt");
 	Rules r("rule.txt");
+	r.removeLeftRecoursion();
 }
