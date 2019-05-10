@@ -96,6 +96,7 @@ struct TOrNTStr { // terminal or non-terminal string
 struct Rules {
 	map<string, set<TOrNTStr>> rs; // non-terminal -> terminal or non-terminal string | ...
 	enum class State { WAIT_FOR_NONT, WAIT_FOR_TS };
+	map<string, set<string>> firstSets, followSets;
 	Rules(string f) {
 		ifstream fin(f);
 		State state = State::WAIT_FOR_NONT;
@@ -148,8 +149,10 @@ struct Rules {
 			for (pair<string, set<TOrNTStr>> cRule : checked) {
 				set<TOrNTStr> nCurExpansions;
 				for (TOrNTStr ts : curExpansions) {
-					if (ts.isEmpty()) continue;
-					if (ts[0] == cRule.first) {
+					if (ts.isEmpty() || ts[0] != cRule.first) 
+						nCurExpansions.insert(ts);
+					else {
+						// should expand
 						ts.eraseAt(0);
 						for (TOrNTStr possibleCExpand : cRule.second) {
 							TOrNTStr nts = ts;
@@ -157,7 +160,6 @@ struct Rules {
 							nCurExpansions.insert(nts);
 						}
 					}
-					nCurExpansions.insert(ts);
 				}
 				curExpansions = nCurExpansions;
 			}
@@ -203,6 +205,57 @@ struct Rules {
 		}
 		rs = checked;
 	}
+	
+	void constructFirstSets() {
+		map<string, bool> bComplete;
+		for (pair<string, set<TOrNTStr>> rule : rs) 
+			bComplete[rule.first] = false;
+		bool bNeedOnceMore;
+		do {
+			bNeedOnceMore = false;
+			for (pair<string, set<TOrNTStr>> rule : rs) {
+				string nonTerminal = rule.first;
+				set<TOrNTStr> curExpansions = rule.second;
+				set<string> fSet;
+				bool bIsThisNonTerminalComplete = true;
+				for (TOrNTStr ts : curExpansions) {
+					if (ts.size() == 0) {
+						fSet.insert("");
+						continue;
+					}
+					for (string t : ts.toks) {
+						if (rs.find(t) == rs.end()) {
+							// is terminal
+							fSet.insert(t);
+							break;
+						}
+						else {
+							// is non-terminal
+							if (t != nonTerminal) {
+								if (firstSets.find(t) != firstSets.end())
+									fSet.insert(firstSets[t].begin(), firstSets[t].end());
+								if (!bComplete[t])
+									bIsThisNonTerminalComplete = false; // In best situation, this code never gets executed!
+							}
+
+							set<TOrNTStr> expands = rs[t];
+							bool bHasEmptyExpand = false;
+							for (TOrNTStr e : expands)
+								if (e.size() == 0)
+									bHasEmptyExpand = true;
+							if (!bHasEmptyExpand)
+								break;
+						}
+					}
+				}
+				firstSets[nonTerminal] = fSet;
+				bComplete[nonTerminal] = bIsThisNonTerminalComplete;
+			}
+			for (pair<string, set<TOrNTStr>> rule : rs)
+				if (!bComplete[rule.first])
+					bNeedOnceMore = true;
+		} while (bNeedOnceMore);
+	}
 };
 
 void readTltb(string f) {
@@ -242,4 +295,5 @@ int main() {
 	readTltb("tltb.txt");
 	Rules r("rule.txt");
 	r.removeLeftRecoursion();
+	r.constructFirstSets();
 }
