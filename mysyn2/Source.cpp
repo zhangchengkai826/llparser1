@@ -125,11 +125,7 @@ struct Rules {
 							}
 							else {
 								// A->aBb
-								if (rs.rs.find(ts[i + 1]) == rs.rs.end()) {
-									// b is terminal
-									continue;
-								}
-								set<string> fSetb = rs.firstSets[ts[i + 1]];
+								set<string> fSetb = rs.firstSetOfSubTs(ts, i + 1);
 								if (fSetb.find("") != fSetb.end()) {
 									if (nonTerminal == ts[i]) {
 										continue;
@@ -381,6 +377,32 @@ struct Rules {
 		} while (bNeedOnceMore);
 	}
 
+	// return firstSet(ts[i]ts[i+1]...)
+	set<string> firstSetOfSubTs(TOrNTStr ts, int startIndex) {
+		set<string> result;
+		set<string> fSetOfNT;
+		for (int i = startIndex; i < ts.size(); i++) {
+			string t = ts[i];
+			if (firstSets.find(t) == firstSets.end()) {
+				// t is terminal
+				result.insert(t);
+				break;
+			}
+			else {
+				// t is non-terminal
+				fSetOfNT = firstSets[t];
+				
+				result.insert(fSetOfNT.begin(), fSetOfNT.end());
+
+				if (fSetOfNT.find("") == fSetOfNT.end()) {
+					// no epsilon in first(t)
+					break;
+				}
+			}
+		}
+		return result;
+	}
+
 	void constructFollowSets() {
 		followHelpler.init(*this);
 		map<string, bool> bComplete;
@@ -424,12 +446,7 @@ struct Rules {
 							}
 							else {
 								// A->aBb
-								if (rs.find(ts[i + 1]) == rs.end()) {
-									// b is terminal
-									followSets[ts[i]].insert(ts[i + 1]);
-									continue;
-								}
-								set<string> fSetb = firstSets[ts[i + 1]];
+								set<string> fSetb = firstSetOfSubTs(ts, i + 1);
 								if (fSetb.find("") != fSetb.end()) {
 									if (followHelpler.isEqual(nonTerminal, ts[i])) {
 										continue;
