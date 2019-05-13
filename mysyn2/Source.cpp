@@ -125,6 +125,10 @@ struct Rules {
 							}
 							else {
 								// A->aBb
+								if (rs.rs.find(ts[i + 1]) == rs.rs.end()) {
+									// b is terminal
+									continue;
+								}
 								set<string> fSetb = rs.firstSets[ts[i + 1]];
 								if (fSetb.find("") != fSetb.end()) {
 									if (nonTerminal == ts[i]) {
@@ -420,6 +424,11 @@ struct Rules {
 							}
 							else {
 								// A->aBb
+								if (rs.find(ts[i + 1]) == rs.end()) {
+									// b is terminal
+									followSets[ts[i]].insert(ts[i + 1]);
+									continue;
+								}
 								set<string> fSetb = firstSets[ts[i + 1]];
 								if (fSetb.find("") != fSetb.end()) {
 									if (followHelpler.isEqual(nonTerminal, ts[i])) {
