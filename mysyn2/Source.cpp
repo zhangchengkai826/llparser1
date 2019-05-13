@@ -7,6 +7,7 @@
 #include <exception>
 #include <cstring>
 #include <set>
+#include <stack>
 using namespace std;
 
 struct Token {
@@ -94,9 +95,122 @@ struct TOrNTStr { // terminal or non-terminal string
 };
 
 struct Rules {
+	struct FollowSetHelper {
+		// B includes A -> inclusiveGraph[A] contains B
+		map<string, set<string>> inclusiveGraph;
+
+		void init(Rules rs) {
+			for (pair<string, set<TOrNTStr>> rule : rs.rs)
+				inclusiveGraph[rule.first] = set<string>();
+			for (pair<string, set<TOrNTStr>> rule : rs.rs) {
+				string nonTerminal = rule.first;
+				set<TOrNTStr> curExpansions = rule.second;
+				for (TOrNTStr ts : curExpansions) {
+					if (ts.size() == 0) {
+						continue;
+					}
+					for (int i = 0; i < ts.size(); i++) {
+						if (rs.rs.find(ts[i]) == rs.rs.end()) {
+							// is terminal
+							continue;
+						}
+						else {
+							// is non-terminal
+							if (i == ts.size() - 1) {
+								// A->aB
+								if (nonTerminal == ts[i]) {
+									continue;
+								}
+								add(nonTerminal, ts[i]);
+							}
+							else {
+								// A->aBb
+								set<string> fSetb = rs.firstSets[ts[i + 1]];
+								if (fSetb.find("") != fSetb.end()) {
+									if (nonTerminal == ts[i]) {
+										continue;
+									}
+									add(nonTerminal, ts[i]);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		void add(string a, string b) {
+			inclusiveGraph[a].insert(b);
+		}
+
+		bool isEqual(string a, string b) {
+			if (a == b)
+				return true;
+			while (true) {
+				vector<string> path;
+				string p;
+				stack<int> iStack;
+				int i;
+				p = a;
+				i = 0;
+				while (true) {
+					bool bForceLeaf = false;
+					if (path.size() > 0 && p == a) {
+						// find a loop
+						// for loop x -> y -> x, path is x -> y
+						if (find(path.begin(), path.end(), b) != path.end()) {
+							// this loop contains b
+							return true;
+						}
+						else {
+							// regard p as leaf node
+							bForceLeaf = true;
+						}
+					}
+					else if (path.size() > 0 && find(path.begin() + 1, path.end(), p) != path.end()) {
+						// find a evil internal loop like x -> y -> z -> y, which will cause infinite loop
+						// note path here is x -> y -> z
+						// we thus regard p as leaf node
+						bForceLeaf = true;
+					}
+
+					set<string> children = inclusiveGraph[p];
+					if (children.size() == 0 || bForceLeaf) {
+						// p is leaf node, go back
+						while (true) {
+							p = path[path.size() - 1];
+							path.pop_back();
+							i = iStack.top();
+							iStack.pop();
+							i++;
+							set<string> children = inclusiveGraph[p];
+							if (i != children.size())
+								break;
+							if (path.size() == 0)
+								return false; // all path tried, no suitable loop found
+						}
+					} else {
+						set<string>::iterator it = children.begin();
+						advance(it, i);
+
+						path.push_back(p);
+						iStack.push(i);
+
+						p = *it;
+						i = 0;
+					}
+				}
+			}
+			// cannot find loop containing both a & b
+			return false;
+		}
+	};
+
 	map<string, set<TOrNTStr>> rs; // non-terminal -> terminal or non-terminal string | ...
 	enum class State { WAIT_FOR_NONT, WAIT_FOR_TS };
 	map<string, set<string>> firstSets, followSets;
+	string startSym;
+	FollowSetHelper followHelpler;
 	Rules(string f) {
 		ifstream fin(f);
 		State state = State::WAIT_FOR_NONT;
@@ -105,12 +219,18 @@ struct Rules {
 		TOrNTStr ts;
 		set<TOrNTStr> expand;
 		string s;
+		bool isFisrtLine;
+		isFisrtLine = true;
 		while (fin >> s) {
 			switch (state)
 			{
 			case State::WAIT_FOR_NONT: {
 				nonTerminal = s;
-				state = State::WAIT_FOR_TS;
+				state = State::WAIT_FOR_TS;				
+				if (isFisrtLine) {
+					isFisrtLine = false;
+					startSym = nonTerminal;
+				}
 			}
 				break;
 			case State::WAIT_FOR_TS: {
@@ -256,6 +376,72 @@ struct Rules {
 					bNeedOnceMore = true;
 		} while (bNeedOnceMore);
 	}
+
+	void constructFollowSets() {
+		followHelpler.init(*this);
+		map<string, bool> bComplete;
+		for (pair<string, set<TOrNTStr>> rule : rs) {
+			bComplete[rule.first] = false;
+			followSets[rule.first] = set<string>();
+		}
+
+		bool bNeedOnceMore;
+		do {
+			map<string, bool> bCompleteOptimistic;
+			for (pair<string, set<TOrNTStr>> rule : rs) {
+				bCompleteOptimistic[rule.first] = true;
+			}
+			bNeedOnceMore = false;
+			for (pair<string, set<TOrNTStr>> rule : rs) {
+				string nonTerminal = rule.first;
+				set<TOrNTStr> curExpansions = rule.second;
+				if (nonTerminal == startSym) {
+					followSets[nonTerminal].insert(""); // means $
+				}
+				for (TOrNTStr ts : curExpansions) {
+					if (ts.size() == 0) {
+						continue;
+					}
+					for (int i = 0; i < ts.size(); i++) {
+						if (rs.find(ts[i]) == rs.end()) {
+							// is terminal
+							continue;
+						}
+						else {
+							// is non-terminal
+							if (i == ts.size() - 1) {
+								// A->aB
+								if (followHelpler.isEqual(nonTerminal, ts[i])) {
+									continue; 
+								}
+								followSets[ts[i]].insert(followSets[nonTerminal].begin(), followSets[nonTerminal].end());
+								if (!bComplete[nonTerminal])
+									bCompleteOptimistic[ts[i]] = false;
+							}
+							else {
+								// A->aBb
+								set<string> fSetb = firstSets[ts[i + 1]];
+								if (fSetb.find("") != fSetb.end()) {
+									if (followHelpler.isEqual(nonTerminal, ts[i])) {
+										continue;
+									}
+									followSets[ts[i]].insert(followSets[nonTerminal].begin(), followSets[nonTerminal].end());
+									if (!bComplete[nonTerminal])
+										bCompleteOptimistic[ts[i]] = false;
+								}
+								fSetb.erase("");
+								followSets[ts[i]].insert(fSetb.begin(), fSetb.end());
+							}
+						}
+					}
+				}
+			}
+			bComplete = bCompleteOptimistic;
+			for (pair<string, set<TOrNTStr>> rule : rs)
+				if (!bComplete[rule.first])
+					bNeedOnceMore = true;
+		} while (bNeedOnceMore);
+	}
 };
 
 void readTltb(string f) {
@@ -296,4 +482,5 @@ int main() {
 	Rules r("rule.txt");
 	r.removeLeftRecoursion();
 	r.constructFirstSets();
+	r.constructFollowSets();
 }
