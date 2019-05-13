@@ -211,6 +211,11 @@ struct Rules {
 	map<string, set<string>> firstSets, followSets;
 	string startSym;
 	FollowSetHelper followHelpler;
+	set<string> terminals;
+	
+	typedef map<string, map<string, pair<string, set<TOrNTStr>>>> ParsingTable;
+	ParsingTable pTbl;
+
 	Rules(string f) {
 		ifstream fin(f);
 		State state = State::WAIT_FOR_NONT;
@@ -259,6 +264,23 @@ struct Rules {
 		}
 
 		fin.close();
+
+		for (pair<string, set<TOrNTStr>> r : rs) {
+			for (TOrNTStr ts : r.second) {
+				for (int i = 0; i < ts.size(); i++) {
+					string t = ts[i];
+					bool bIsTerminal = true;
+					for (pair<string, set<TOrNTStr>> r : rs) {
+						if (t == r.first) {
+							bIsTerminal = false;
+							break;
+						}
+					}
+					if (bIsTerminal)
+						terminals.insert(t);
+				}
+			}
+		}
 	}
 	void removeLeftRecoursion() {
 		map<string, set<TOrNTStr>> checked;
@@ -468,6 +490,10 @@ struct Rules {
 					bNeedOnceMore = true;
 		} while (bNeedOnceMore);
 	}
+
+	void constructParsingTable() {
+		
+	}
 };
 
 void readTltb(string f) {
@@ -509,4 +535,5 @@ int main() {
 	r.removeLeftRecoursion();
 	r.constructFirstSets();
 	r.constructFollowSets();
+	r.constructParsingTable();
 }
