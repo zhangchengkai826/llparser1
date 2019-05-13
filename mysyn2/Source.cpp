@@ -213,7 +213,95 @@ struct Rules {
 	FollowSetHelper followHelpler;
 	set<string> terminals;
 	
-	typedef map<string, map<string, pair<string, set<TOrNTStr>>>> ParsingTable;
+	struct ParsingTableEntry {
+		bool isError;
+		pair<string, set<TOrNTStr>> rule;
+		void(*errHandler)();
+		ParsingTableEntry() {
+			isError = true;
+			errHandler = nullptr;
+		}
+		bool operator<(const ParsingTableEntry e) const {
+			if (isError < e.isError)
+				return true;
+			if (isError > e.isError)
+				return false;
+			if (isError == true) {
+				if (errHandler < e.errHandler)
+					return true;
+				else
+					return false;
+			}
+			else {
+				if (rule.first < e.rule.first) {
+					return true;
+				}
+				else if (rule.first > e.rule.first) {
+					return false;
+				}
+				else {
+					if (rule.second.size() < e.rule.second.size())
+						return true;
+					else if (rule.second.size() > e.rule.second.size())
+						return false;
+					else {
+						auto it1 = rule.second.begin();
+						auto it2 = e.rule.second.begin();
+						for (int i = 0; i < (int)rule.second.size(); i++) {
+							if (*it1 < *it2)
+								return true;
+							else if (*it1 > *it2)
+								return false;
+							it1++;
+							it2++;
+						}
+						return false; // equlity
+					}
+				}
+			}
+		}
+		bool operator>(const ParsingTableEntry e) const {
+			if (isError > e.isError)
+				return true;
+			if (isError < e.isError)
+				return false;
+			if (isError == true) {
+				if (errHandler > e.errHandler)
+					return true;
+				else
+					return false;
+			}
+			else {
+				if (rule.first > e.rule.first) {
+					return true;
+				}
+				else if (rule.first < e.rule.first) {
+					return false;
+				}
+				else {
+					if (rule.second.size() > e.rule.second.size())
+						return true;
+					else if (rule.second.size() < e.rule.second.size())
+						return false;
+					else {
+						auto it1 = rule.second.begin();
+						auto it2 = e.rule.second.begin();
+						for (int i = 0; i > (int)rule.second.size(); i++) {
+							if (*it1 > *it2)
+								return true;
+							else if (*it1 < *it2)
+								return false;
+							it1++;
+							it2++;
+						}
+						return false; // equlity
+					}
+				}
+			}
+		}
+	};
+
+	typedef map<string, map<string, set<ParsingTableEntry>>> ParsingTable;
 	ParsingTable pTbl;
 
 	Rules(string f) {
@@ -492,7 +580,47 @@ struct Rules {
 	}
 
 	void constructParsingTable() {
+		for (pair<string, set<TOrNTStr>> rule : rs) {
+			pTbl[rule.first] = map<string, set<ParsingTableEntry>>();
+			for (string trmnl : terminals) {
+				pTbl[rule.first][trmnl] = set<ParsingTableEntry>();
+			}
+			pTbl[rule.first][""] = set<ParsingTableEntry>();
+		}
 		
+		for (pair<string, set<TOrNTStr>> rule : rs) {
+			for (TOrNTStr ts : rule.second) {
+				set<string> fSet = firstSetOfSubTs(ts, 0);
+				bool bHasEpslon = false;
+				for (string t : fSet) {
+					if (t == "") {
+						bHasEpslon = true;
+						continue;
+					}
+					ParsingTableEntry e;
+					e.isError = false;
+					e.rule = rule;
+					pTbl[rule.first][t].insert(e);
+				}
+				if (bHasEpslon) {
+					set<string> flwSet = followSets[rule.first];
+					for (string t : flwSet) {
+						ParsingTableEntry e;
+						e.isError = false;
+						e.rule = rule;
+						pTbl[rule.first][t].insert(e);
+					}
+				}
+			}
+		}
+		for (auto r : pTbl) {
+			for (auto cell : r.second) {
+				if (cell.second.size() > 1) {
+					cerr << "Not LL(1) Grammar!" << endl << "ParsingTable[" << r.first << ", " << cell.first << "] has " << cell.second.size() << "entries!" << endl;
+					exit(1);
+				}
+			}
+		}
 	}
 };
 
