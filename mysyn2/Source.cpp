@@ -217,7 +217,7 @@ struct Rules {
 	
 	struct ParsingTableEntry {
 		bool isError;
-		pair<string, set<TOrNTStr>> rule;
+		pair<string, TOrNTStr> rule;
 		void(*errHandler)();
 		ParsingTableEntry() {
 			isError = true;
@@ -235,31 +235,15 @@ struct Rules {
 					return false;
 			}
 			else {
-				if (rule.first < e.rule.first) {
+				if (rule.first < e.rule.first) 
 					return true;
-				}
-				else if (rule.first > e.rule.first) {
+				else if (rule.first > e.rule.first) 
 					return false;
-				}
-				else {
-					if (rule.second.size() < e.rule.second.size())
-						return true;
-					else if (rule.second.size() > e.rule.second.size())
-						return false;
-					else {
-						auto it1 = rule.second.begin();
-						auto it2 = e.rule.second.begin();
-						for (int i = 0; i < (int)rule.second.size(); i++) {
-							if (*it1 < *it2)
-								return true;
-							else if (*it1 > *it2)
-								return false;
-							it1++;
-							it2++;
-						}
-						return false; // equlity
-					}
-				}
+				else if (rule.second < e.rule.second)
+					return true;
+				else if (rule.second > e.rule.second)
+					return false;
+				return false; // equlity
 			}
 		}
 		bool operator>(const ParsingTableEntry e) const {
@@ -280,25 +264,15 @@ struct Rules {
 				else if (rule.first < e.rule.first) {
 					return false;
 				}
-				else {
-					if (rule.second.size() > e.rule.second.size())
-						return true;
-					else if (rule.second.size() < e.rule.second.size())
-						return false;
-					else {
-						auto it1 = rule.second.begin();
-						auto it2 = e.rule.second.begin();
-						for (int i = 0; i > (int)rule.second.size(); i++) {
-							if (*it1 > *it2)
-								return true;
-							else if (*it1 < *it2)
-								return false;
-							it1++;
-							it2++;
-						}
-						return false; // equlity
-					}
-				}
+				if (rule.first > e.rule.first)
+					return true;
+				else if (rule.first < e.rule.first)
+					return false;
+				else if (rule.second > e.rule.second)
+					return true;
+				else if (rule.second < e.rule.second)
+					return false;
+				return false; // equlity
 			}
 		}
 	};
@@ -493,6 +467,8 @@ struct Rules {
 	set<string> firstSetOfSubTs(TOrNTStr ts, int startIndex) {
 		set<string> result;
 		set<string> fSetOfNT;
+		if (ts.isEmpty())
+			result.insert("");
 		for (int i = startIndex; i < ts.size(); i++) {
 			string t = ts[i];
 			if (firstSets.find(t) == firstSets.end()) {
@@ -601,7 +577,8 @@ struct Rules {
 					}
 					ParsingTableEntry e;
 					e.isError = false;
-					e.rule = rule;
+					e.rule.first = rule.first;
+					e.rule.second = ts;
 					pTbl[rule.first][t].insert(e);
 				}
 				if (bHasEpslon) {
@@ -609,7 +586,8 @@ struct Rules {
 					for (string t : flwSet) {
 						ParsingTableEntry e;
 						e.isError = false;
-						e.rule = rule;
+						e.rule.first = rule.first;
+						e.rule.second = ts;
 						pTbl[rule.first][t].insert(e);
 					}
 				}
@@ -618,13 +596,23 @@ struct Rules {
 		for (auto r : pTbl) {
 			for (auto cell : r.second) {
 				if (cell.second.size() > 1) {
-					cerr << "Not LL(1) Grammar!" << endl << "ParsingTable[" << r.first << ", " << cell.first << "] has " << cell.second.size() << "entries!" << endl;
-					exit(1);
+					cerr << "Warning: " << "ParsingTable[" << r.first << ", " << cell.first << "] has " << cell.second.size() << " entries!" << endl;
 				}
 			}
 		}
 	}
+
+	void raiseSyntaxError(string token) {
+		cerr << "syntax error near " << token << endl;
+		exit(1);
+	}
+
 	enum class READ_SRC_STAGE { IDLE, READ_TOKEN };
+	struct ParsingContext {
+		int i;
+		stack<string> stk;
+		int ruleId;
+	};
 	void parse(string srcFile) {
 		ifstream fin(srcFile);
 		vector<string> w;
@@ -655,7 +643,88 @@ struct Rules {
 	endReadSrc:
 		fin.close();
 
+		if (w.size() == 0)
+			return;
 
+		w.push_back(""); // means $, marks end of input
+		stack<string> stk;
+		stack<ParsingContext> contexts;
+		stk.push(startSym);
+		int i = 0;
+		int ruleId = 0;
+		string X = stk.top();
+		string a = w[i];
+		// start parsing
+		while (!stk.empty()) {
+			if (X == a) {
+				stk.pop();
+				i++;
+				a = w[i];
+			}
+			else if (terminals.find(X) != terminals.end()) {
+				if (contexts.empty())
+					raiseSyntaxError(a);
+				else {
+					ParsingContext ctx = contexts.top();
+					contexts.pop();
+					i = ctx.i;
+					a = w[i];
+					stk = ctx.stk;
+					ruleId = ctx.ruleId;
+				}
+			}
+			else if (pTbl[X][a].size() == 0) {
+				if (contexts.empty()) 
+					raiseSyntaxError(a);
+				else {
+					ParsingContext ctx = contexts.top();
+					contexts.pop();
+					i = ctx.i;
+					a = w[i];
+					stk = ctx.stk;
+					ruleId = ctx.ruleId;
+				}
+			}
+			else {
+				auto ruleIt = pTbl[X][a].begin();
+				advance(ruleIt, ruleId);
+				if (ruleId + 1 != pTbl[X][a].size()) {
+					ParsingContext ctx;
+					ctx.i = i;
+					ctx.stk = stk;
+					ctx.ruleId = ruleId + 1;
+					contexts.push(ctx);
+				}
+				pair<string, TOrNTStr> rule = ruleIt->rule;
+				cout << rule.first << " -> ";
+				for (int k = 0; k < rule.second.size(); k++) {
+					cout << rule.second[k] << " ";
+				}
+				cout << endl;
+				stk.pop();
+				for (int k = rule.second.size() - 1; k >= 0; k--) {
+					stk.push(rule.second[k]);
+				}
+				ruleId = 0;
+			}
+			if (stk.empty())
+				break;
+			X = stk.top();
+
+			cout << "\ts: ";
+			stack<string> stTemp1 = stk;
+			while (!stTemp1.empty()) {
+				cout << stTemp1.top() << " ";
+				stTemp1.pop();
+			}
+			cout << endl;
+			cout << "\ta: ";
+			for (int k = i; k < i + 5 && k < w.size(); k++) {
+				cout << w[k] << " ";
+			}
+			cout << endl << endl;
+		}
+		cout << "syntax correct!" << endl;
 	}
 };
 
