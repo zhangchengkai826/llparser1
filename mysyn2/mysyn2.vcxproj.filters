@@ -15,13 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\..\mylex2\mylex\lex_out.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
     <Text Include="rule.txt">
       <Filter>Resource Files</Filter>
     </Text>
     <Text Include="tltb.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="lex_out.txt">
       <Filter>Resource Files</Filter>
     </Text>
   </ItemGroup>

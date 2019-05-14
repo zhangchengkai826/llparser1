@@ -19,7 +19,9 @@ struct Token {
 		else if (k > t.k)
 			return false;
 		else {
-			if (v < t.v)
+			if (v == -1 || t.v == -1)
+				return false;
+			else if (v < t.v)
 				return true;
 			else if (v > t.v)
 				return false;
@@ -622,6 +624,39 @@ struct Rules {
 			}
 		}
 	}
+	enum class READ_SRC_STAGE { IDLE, READ_TOKEN };
+	void parse(string srcFile) {
+		ifstream fin(srcFile);
+		vector<string> w;
+		string s;
+		Token t;
+		READ_SRC_STAGE stage = READ_SRC_STAGE::IDLE;
+		char c;
+		while (true) {
+			switch (stage)
+			{
+			case Rules::READ_SRC_STAGE::IDLE:
+				fin >> s;
+				if (s == "#tokens") {
+					stage = READ_SRC_STAGE::READ_TOKEN;
+					continue;
+				}
+				break;
+			case Rules::READ_SRC_STAGE::READ_TOKEN:
+				fin >> c;
+				if (c == '#')
+					goto endReadSrc;
+				fin.putback(c);
+				fin >> t.k >> t.v;
+				w.push_back(tltb[t]);
+				break;
+			}
+		}
+	endReadSrc:
+		fin.close();
+
+
+	}
 };
 
 void readTltb(string f) {
@@ -656,7 +691,6 @@ void readTltb(string f) {
 	fin.close();
 }
 
-
 int main() {
 	readTltb("tltb.txt");
 	Rules r("rule.txt");
@@ -664,4 +698,5 @@ int main() {
 	r.constructFirstSets();
 	r.constructFollowSets();
 	r.constructParsingTable();
+	r.parse("lex_out.txt");
 }

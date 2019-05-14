@@ -139,7 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="..\..\mylex2\mylex\lex_out.txt" />
+    <Text Include="lex_out.txt" />
     <Text Include="rule.txt" />
     <Text Include="tltb.txt" />
   </ItemGroup>
